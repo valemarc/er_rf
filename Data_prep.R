@@ -17,7 +17,7 @@ str(BM)
 ####################################################
 
 ###Partition the dataset
-# Separate assessed species
+# Separate non DD species
 assessed<- data.frame(subset(BM, RedList != "DD"))
 #row.names(assessed)<- assessed$Binomial
 nrow (assessed)
@@ -28,7 +28,7 @@ assessed$binary[assessed$RedList == "VU"]="Thr"
 assessed$binary[assessed$RedList == "EN"]="Thr"
 assessed$binary[assessed$RedList == "CR"]="Thr"
 
-# Setting nonassessed species aside
+# Setting DD species aside
 nonassessedspecies<- data.frame(subset (BM, RedList=="DD"))
 #row.names(nonassessedspecies)<- nonassessedspecies$Binomial
 #nonassessedspecies<- subset(nonassessedspecies,select= -c(Binomial,RedList, Genus))
@@ -45,9 +45,13 @@ dim(trainassessed)
 length(trainB)
 
 ###If you need to check anything you can write out the files
-write.csv(trainassessed, "trainassessed.csv")
+#write.csv(trainassessed, "trainassessed.csv")
 #write.csv(trainB, "trainB.csv")
 
+
+###Create a smaller sample for testing
+trainassessed_small <- sample_n(trainassessed, 200)
+summary(trainassessed_small)
 
 #######################################################################################################################
 #########################  Basic model to test  #################################
@@ -68,9 +72,6 @@ plot(model)
 er_pred <- predict(model, nonassessedspecies)
 summary(er_pred)
 
-# compare predicted outcome and true outcome 
-confusionMatrix(er_pred, as.factor(nonassessedspecies$binary)) ####can't do on test data because it's all DD
-
 ###########################################################################################################
 ####Repeat model tuning parameters (takes about 1 min)
 model_control <- trainControl(## 10-fold CV
@@ -88,6 +89,10 @@ end_time - start_time
 ###Look at results
 print(model)
 plot(model)
+
+# compare predicted outcome and true outcome 
+confusionMatrix(er_pred, as.factor(nonassessedspecies$binary)) ####can't do on test data because it's all DD
+
 
 ###Predict status of DD species
 er_pred <- predict(model, nonassessedspecies)
