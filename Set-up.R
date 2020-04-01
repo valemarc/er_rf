@@ -27,6 +27,7 @@ install.packages("corrplot")
 install.packages("pROC")
 install.packages("ranger")
 devtools::install_cran("dplyr", force=TRUE)
+install.packages("MLeval")
 
 #Open libraries
 library(caret)
@@ -49,3 +50,4 @@ library(corrplot)
 library(pROC)
 library(ranger)
 library(dplyr)
+library(MLeval)

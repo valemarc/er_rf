@@ -72,6 +72,9 @@ plot(model)
 er_pred <- predict(model, nonassessedspecies)
 summary(er_pred)
 
+###Create confusion matrix
+confusionMatrix(factor(binary), test$Class)
+
 ###########################################################################################################
 ####Repeat model tuning parameters (takes about 1 min)
 model_control <- trainControl(## 10-fold CV
@@ -90,9 +93,67 @@ end_time - start_time
 print(model)
 plot(model)
 
-# compare predicted outcome and true outcome 
-confusionMatrix(er_pred, as.factor(nonassessedspecies$binary)) ####can't do on test data because it's all DD
+###Predict status of DD species
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
 
+
+######################################################
+####compute ROC and AUC under ROC after training#######
+#########################################################
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE, )
+# run a random forest model
+start_time <- Sys.time()
+model <- train(as.factor(binary) ~ ., 
+               data = trainassessed, 
+               method = "ranger",
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+###Look at results
+print(model)
+plot(model)
+
+###Predict status of DD species
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
+
+
+######################################################
+####Same but with method rf#######
+#########################################################
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE, )
+# run a random forest model
+start_time <- Sys.time()
+model <- train(as.factor(binary) ~ ., 
+               data = trainassessed, 
+               method = "rf",
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+###Look at results
+print(model)
+plot(model)
+
+x <- evalm(model)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
 
 ###Predict status of DD species
 er_pred <- predict(model, nonassessedspecies)
