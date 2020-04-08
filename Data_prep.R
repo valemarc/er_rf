@@ -72,9 +72,6 @@ plot(model)
 er_pred <- predict(model, nonassessedspecies)
 summary(er_pred)
 
-###Create confusion matrix
-confusionMatrix(factor(binary), test$Class)
-
 ###########################################################################################################
 ####Repeat model tuning parameters (takes about 1 min)
 model_control <- trainControl(## 10-fold CV
@@ -171,15 +168,17 @@ trainassessed_preprocess$method
 trainTransformed <- predict(trainassessed_preprocess, trainassessed)
 
 ###########################################################################################################
-####Repeat model tuning parameters (takes about 1 min)
+####Repeat model tuning parameters (takes about 20 min)
 model_control <- trainControl(## 10-fold CV
   method = "cv",
-  number = 10)
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE, )
 # run a random forest model
 start_time <- Sys.time()
-model <- train(binary ~ ., 
+model <- train(as.factor(binary) ~ ., 
                data = trainTransformed, 
-               method = "ranger",
+               method = "rf",
                trControl = model_control)
 end_time <- Sys.time()
 end_time - start_time
@@ -188,11 +187,19 @@ end_time - start_time
 print(model)
 plot(model)
 
+x <- evalm(model)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
 ###Predict status of DD species
-testTransformed <- predict(trainassessed_preprocess, nonassessedspecies)
-summary(testTransformed)
-
-
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
 
 ###########################################################
 
