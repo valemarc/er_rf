@@ -156,36 +156,28 @@ x$stdres
 er_pred <- predict(model, nonassessedspecies)
 summary(er_pred)
 
-###############################################################
-###Pre-process variables as per Caret package (Kuhn, 2008)#####
-###############################################################
-###Centre and scale variables
-trainassessed_preprocess <- preProcess(select(trainassessed, - c("ID", "binary")), method = c("center", "scale", "nzv"))
-trainassessed_preprocess
-trainassessed_preprocess$method
 
-###As the function preprocess doesn't actually preprocess the data, we need to do this
-trainTransformed <- predict(trainassessed_preprocess, trainassessed)
-
-###########################################################################################################
-####Repeat model tuning parameters (takes about 20 min)
+#######################################################################################
+####set ntree to 500 (although this should be the default value set by rf in caret)####
+#######################################################################################
 model_control <- trainControl(## 10-fold CV
   method = "cv",
   number = 10,
   savePredictions = TRUE, 
-  classProbs = TRUE, )
+  classProbs = TRUE)
 # run a random forest model
 start_time <- Sys.time()
 model <- train(as.factor(binary) ~ ., 
-               data = trainTransformed, 
+               data = trainassessed, 
                method = "rf",
+               ntree= 500,
                trControl = model_control)
 end_time <- Sys.time()
 end_time - start_time
 
-###Look at results
 print(model)
 plot(model)
+
 
 x <- evalm(model)
 
@@ -201,11 +193,131 @@ x$stdres
 er_pred <- predict(model, nonassessedspecies)
 summary(er_pred)
 
+
+#####################################################################################
+####Set mtry (number of variables randomly sampled as candidates at each split)######
+#####################################################################################
+###Takes about 26 minutes
+#Generate 15 random values of mtry at each time tunning. 
+#We have 15 values because of tunning length is 15.
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE)
+mtry <- sqrt(ncol(trainassessed[,2:29]))
+# run a random forest model
+start_time <- Sys.time()
+model <- train(as.factor(binary) ~ ., 
+               data = trainassessed, 
+               method = "rf",
+               tunelength=15,
+               ntree= 500,
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+print(model)
+plot(model)
+
+###Predict status of DD species
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
+
+##############################################################################
+#mtry: Number of variables randomly sampled as candidates at each split.
+###Takes about 9 minutes
+####Prediction changes from all threatened to all non threatened (mtry was held constant at 5.29 and
+#plot(model) throws an error message - There are no tuning parameters with more than 1 value)
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE)
+mtry <- sqrt(ncol(trainassessed[,2:29]))
+tunegrid <- expand.grid(.mtry=mtry)
+# run a random forest model
+start_time <- Sys.time()
+model <- train(as.factor(binary) ~ ., 
+               data = trainassessed, 
+               method = "rf",
+               tuneGrid=tunegrid,
+               ntree= 500,
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+print(model)
+plot(model)
+
+
+x <- evalm(model)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
+###Predict status of DD species
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
+
+###############################################################
+###Pre-process variables as per Caret package (Kuhn, 2008)#####
+###############################################################
+###Centre and scale variables
+trainassessed_preprocess <- preProcess(select(trainassessed, - c("ID", "binary")), method = c("center", "scale", "nzv"))
+trainassessed_preprocess
+trainassessed_preprocess$method
+
+###As the function preprocess doesn't actually preprocess the data, we need to do this
+trainTransformed <- predict(trainassessed_preprocess, trainassessed)
+
+###########################################################################################################
+####Repeat model tuning parameters (takes about 22 min)
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE)
+mtry <- sqrt(ncol(trainTransformed[,2:29]))
+# run a random forest model
+start_time <- Sys.time()
+model <- train(as.factor(binary) ~ ., 
+               data = trainTransformed, 
+               method = "rf",
+               tunelength=15,
+               ntree= 500,
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+print(model)
+plot(model)
+
+###Predict status of DD species
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
+
+x <- evalm(model)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
+###Predict status of DD species
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
+###All species predicted to be threatened
+
 ###########################################################
-
-
-
-
 
 ###Create dataframe with different types of variables
 BM_other <- BM[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
@@ -230,7 +342,7 @@ summary(descrCor[upper.tri(descrCor)])
 corrplot(descrCor)
 
 ###Detect highly correlated variables and exclude them (but there are none)
-highlyCorDescr <- findCorrelation(descrCor, cutoff = .75) ###as this is zero there is no need to delete any of the columns
+highlyCorDescr <- findCorrelation(descrCor, cutoff = .9) ###as this is zero there is no need to delete any of the columns
 #filteredDescr <- BM_numeric[,-highlyCorDescr]
 #descrCor2 <- cor(filteredDescr)
 #summary(descrCor2[upper.tri(descrCor2)])
@@ -258,9 +370,14 @@ typeof(BM_new2)
 str(BM_new2)
 
 ###Centering and scaling numeric variables################
-###Not done for now as there seems to be no agreement on whether it's necessary for RF
-#Numeric predictors were transformed, centred and scaled to a mean of zero and standard deviation of one. 
-#preProcValues <- preProcess(BM_new2[,-1], method = c("center", "scale"))
+###Centre and scale variables
+trainassessed_preprocess <- preProcess(BM_new2[,-1], method = c("center", "scale"))
+trainassessed_preprocess
+trainassessed_preprocess$method
+
+###As the function preprocess doesn't actually preprocess the data, we need to do this
+trainTransformed <- predict(trainassessed_preprocess, BM_new2)
+#preProcValues 
 #BM_new2_Transformed <- predict(preProcValues, BM_new2)
 #testTransformed <- predict(preProcValues, test)
 
@@ -270,11 +387,11 @@ str(BM_new2)
 #typeof(BM_new2_Transformed)
 #str(BM_new2_Transformed)
 
-
 ###Partition the dataset
 # Separate assessed species
 assessed<- data.frame(subset(BM_new2, RedList.DD!=1))
-row.names(assessed)<- assessed$Binomial
+assessed <- assessed[complete.cases(assessed), ]
+#row.names(assessed)<- assessed$Binomial
 
 assessed$binary<-"nonThr"
 assessed$binary[assessed$RedList.VU == 1]="Thr"
@@ -285,8 +402,88 @@ assessed$binary[assessed$RedList.CR == 1]="Thr"
 
 # Setting nonassessed species aside
 nonassessedspecies<- data.frame(subset (BM_new2, RedList.DD==1))
-row.names(nonassessedspecies)<- nonassessedspecies$Binomial
+#row.names(nonassessedspecies)<- nonassessedspecies$Binomial
 #nonassessedspecies<- subset(nonassessedspecies,select= -c(Binomial,RedList, Genus))
+
+####Repeat model tuning parameters (takes about 25 min)
+####Predicts 4 species threatened, 261 non-threatened, uses 63 as final mtry value
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE)
+mtry <- sqrt(ncol(assessed[,2:36]))
+# run a random forest model
+start_time <- Sys.time()
+model <- train(as.factor(binary) ~ ., 
+               data = assessed, 
+               method = "rf",
+               tunelength=15,
+               ntree= 500,
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+print(model)
+plot(model)
+
+###Predict status of DD species
+er_pred <- predict(model, nonassessedspecies)
+summary(er_pred)
+
+x <- evalm(model)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
+summary(model$finalModel)
+
+####Try this to get stats
+
+# NOT RUN {
+set.seed(2444)
+dat <- twoClassSim(500, intercept = -10)
+table(dat$Class)
+
+ctrl <- trainControl(method = "cv", 
+                     classProbs = TRUE,
+                     savePredictions = "all",
+                     summaryFunction = twoClassSummary)
+
+set.seed(2863)
+mod <- train(Class ~ ., data = dat, 
+             method = "rda",
+             tuneLength = 4,
+             metric = "ROC",
+             trControl = ctrl)
+
+resample_stats <- thresholder(mod, 
+                              threshold = seq(.5, 1, by = 0.05), 
+                              final = TRUE)
+
+ggplot(resample_stats, aes(x = prob_threshold, y = J)) + 
+  geom_point()
+ggplot(resample_stats, aes(x = prob_threshold, y = Dist)) + 
+  geom_point()
+ggplot(resample_stats, aes(x = prob_threshold, y = Sensitivity)) + 
+  geom_point() + 
+  geom_point(aes(y = Specificity), col = "red")
+# }
+
+
+
+
+
+
+
+
+
+
 
 #######################################################################################################################
 #########################  Random Forests Model for IUCN Red Listed and SRLI Species  #################################
