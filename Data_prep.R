@@ -317,12 +317,34 @@ er_pred <- predict(model, nonassessedspecies)
 summary(er_pred)
 ###All species predicted to be threatened
 
-###########################################################
+#####################################################################################################
+############FINAL MODEL##############################################################################
+#####################################################################################################
+###Centering and scaling numeric variables################
+###Centre and scale variables
+trainassessed_preprocess <- preProcess(BM[,-1], method = c("center", "scale"))
+trainassessed_preprocess
+trainassessed_preprocess$method
+
+###As the function preprocess doesn't actually preprocess the data, we need to do this
+trainTransformed <- predict(trainassessed_preprocess, BM)
+head(trainTransformed)
+#preProcValues 
+#BM_new2_Transformed <- predict(preProcValues, BM_new2)
+#testTransformed <- predict(preProcValues, test)
+
+#dim(BM_new2_Transformed)
+#names(BM_new2_Transformed)
+#summary(BM_new2_Transformed)
+#typeof(BM_new2_Transformed)
+#str(BM_new2_Transformed)
+
 
 ###Create dataframe with different types of variables
-BM_other <- BM[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
-BM_cat <- BM[,c("ID", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
-BM_numeric <- BM[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+BM_other <- trainTransformed[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+BM_cat <- trainTransformed[,c("ID", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
+BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+
 
 ###Categorical variables transformed to orthogonal dummy variables##############
 ###Create the dummy variables
@@ -369,23 +391,6 @@ summary(BM_new2)
 typeof(BM_new2)
 str(BM_new2)
 
-###Centering and scaling numeric variables################
-###Centre and scale variables
-trainassessed_preprocess <- preProcess(BM_new2[,-1], method = c("center", "scale"))
-trainassessed_preprocess
-trainassessed_preprocess$method
-
-###As the function preprocess doesn't actually preprocess the data, we need to do this
-trainTransformed <- predict(trainassessed_preprocess, BM_new2)
-#preProcValues 
-#BM_new2_Transformed <- predict(preProcValues, BM_new2)
-#testTransformed <- predict(preProcValues, test)
-
-#dim(BM_new2_Transformed)
-#names(BM_new2_Transformed)
-#summary(BM_new2_Transformed)
-#typeof(BM_new2_Transformed)
-#str(BM_new2_Transformed)
 
 ###Partition the dataset
 # Separate assessed species
@@ -397,11 +402,18 @@ assessed$binary<-"nonThr"
 assessed$binary[assessed$RedList.VU == 1]="Thr"
 assessed$binary[assessed$RedList.EN == 1]="Thr"
 assessed$binary[assessed$RedList.CR == 1]="Thr"
+dim(assessed)
+head(assessed)
 
 #assessed<- subset(assessed, select= -c(Binomial,RedList, binary, Genus))
 
 # Setting nonassessed species aside
 nonassessedspecies<- data.frame(subset (BM_new2, RedList.DD==1))
+nonassessedspecies <- nonassessedspecies[complete.cases(nonassessedspecies), ]
+nonassessedspecies$binary<-NA
+head(nonassessedspecies)
+dim(nonassessedspecies)
+
 #row.names(nonassessedspecies)<- nonassessedspecies$Binomial
 #nonassessedspecies<- subset(nonassessedspecies,select= -c(Binomial,RedList, Genus))
 
@@ -412,13 +424,209 @@ model_control <- trainControl(## 10-fold CV
   number = 10,
   savePredictions = TRUE, 
   classProbs = TRUE)
-mtry <- sqrt(ncol(assessed[,2:36]))
-# run a random forest model
+#mtry <- sqrt(ncol(assessed[,2:36]))
+    # run a random forest model
+      start_time <- Sys.time()
+      model <- train(as.factor(binary) ~ ., 
+                     data = assessed, 
+                     method = "rf",
+                     tunelength=15,
+                     ntree= 500,
+                     trControl = model_control)
+      end_time <- Sys.time()
+      end_time - start_time
+
+print(model)
+plot(model)
+
+###Predict status of assessed species
+er_pred <- predict(model,assessed)
+summary(er_pred)
+
+x <- evalm(model)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
+summary(model$finalModel)
+
+
+##  Interpreting probabilistic results####
+###Predict status of DD species
+er_pred <- predict(model, assessed,type="prob")
+results_er_pred<-predict(model,assessed,type="prob")[,2]
+summary(er_pred)
+print(er_pred)
+
+
+###Create a daframe with predicted and observed status
+binary<- assessed$binary # define classes
+binary2<- as.vector(binary)
+temp <- merge(assessed, BM[, c("ID","RedList")], by = "ID")
+RL_status<-temp$RedList
+RL_status<-as.character(RL_status)
+dataframe<- data.frame(cbind(results_er_pred, RL_status, binary2))
+write.csv(dataframe, "Observed_predicted.csv") # insert correct path name to save results as .csv
+
+
+
+###Plot probability classes
+results_er_pred<- as.vector(results_er_pred)
+dataframe<- data.frame(cbind(results_er_pred,binary2))
+dataframe$results_er_pred<- as.numeric(as.character(dataframe$results_er_pred)) # as numeric changes the variable value. needs correction
+par(mfrow=c(2,2))
+hist(dataframe$results_er_pred, xlab="Probability of extinction", main=NULL, cex.main=1, ylim=c(0,50))
+abline(v=0.42,col=3,lty=3) # set abline as correct probability threshold from results
+hist(dataframe$results_er_pred[dataframe$binary2=="nonThr"], xlab="Probability of extinction", main=NULL, cex.main=1, ylim=c(0,50), xlim=c(0,1))
+abline(v=0.42,col=3,lty=3)
+hist(dataframe$results_er_pred[dataframe$binary2=="Thr"], xlab="Probability of extinction", main=NULL, cex.main=1, xlim=c(0,1))
+abline(v=0.42,col=3,lty=3)
+
+preds<- prediction(predictions=results_er_pred, labels=trainB) #  indicate which model results, e.g. results.rf
+print(preds)
+
+# AUC
+AUC<- performance(preds, "auc")
+AUC
+myROC<- performance(preds, "tpr", "fpr")
+myROCtable<- data.frame(cbind(myROC@alpha.values[[1]],myROC@y.values[[1]],myROC@x.values[[1]])) # creating dataframe with cutoff, tpr, fpr
+# Youden's Index
+myROCtable$X4<- myROCtable$X2 - myROCtable$X3
+cutoff<- myROCtable$X1[which.max(myROCtable$X4)]
+cutoff
+Youden<- myROCtable$X4[which.max(myROCtable$X4)]
+Youden
+# ROC plot
+par(mfrow=c(1,1))
+plot(myROC, main=NULL, colorize=T, ylim= c(0,1))
+# Confusion matrix
+score<- ifelse(results_er_pred<=cutoff,"nonThr", "Thr")
+confusion<- confusionMatrix(score,trainB, positive="Thr")
+confusion
+
+
+
+
+
+
+
+#####Start from here
+
+
+
+
+
+
+#######################################################################################################################
+############################ Comparing probabilities with IUCN Red List status ########################################
+
+results<- results_er_pred
+print(results)
+
+pred.names<- as.vector(row.names(assessed))
+assessed2<- data.frame(subset(BM, RL_status!="nonassessed"))
+row.names(assessed2)<- assessed2$Genus_species
+pred.frame<- assessed2[match(pred.names,assessed2$Genus_species),] # selecting rows for which we have predicted status
+pred.frame$RL_status<- droplevels(pred.frame$RL_status) # drop unused levels
+pred.frame<- cbind(pred.frame[,1:2], results)
+pred.frame$RL_status <- factor(pred.frame$RL_status, levels = c("LC", "NT", "VU", "EN", "CR"), labels = c("LC", "NT", "VU", "EN", "CR")) 
+plot(pred.frame$RL_status,pred.frame$results, xlab= "Red List category", cex.lab=0.9,
+     ylab= "Predicted probability of threat",
+     main=NULL, cex.main=0.9)
+box<- boxplot(results~RL_status, labels=row.names(pred.frame),data=pred.frame, id.n=10)
+identify(pred.frame$RedList,pred.frame$results.rf,pred.frame$Binomial,pos=F,plot=T)
+write.table(pred.order,"insertpath") # insert correct path name to save table
+
+
+
+#######################################################################################################################
+############################################ Variable Importance ######################################################
+
+random.forest<-randomForest(trainonassessed,trainB,ntreeTry=500, # changed to 500
+                            mtry= rf.model$bestTune[1,1],replace=T,importance=TRUE)
+rf.importance<- importance(random.forest, type=2)
+rf.importance
+rf.importance<- data.frame(rf.importance)
+rf.importance$names<- row.names(rf.importance)
+rf.importance<- rf.importance[order(rf.importance$MeanDecreaseGini, decreasing=FALSE),]
+rf.importance
+
+dotchart(rf.importance$MeanDecreaseGini, labels = row.names(rf.importance), xlab= "Mean Decrease in Gini Index", main="Variable importance in random forest model")
+
+#Partial depence plots
+par(mfrow=c(3,2))
+partialPlot(random.forest,trainnonassessed, x.var= "Range", n.pt=10, which.class= "Thr", main=NULL, ylab="Partial dependence", xlab="log(Range)", cex.main=1) # n.pt smoothes the graph - number of datapoints from which the function is computed
+partialPlot(random.forest,trainnonassessed, x.var= "Isolation", n.pt=10, which.class= "Thr", main=NULL, ylab="Partial dependence", xlab="Isolation index", cex.main=1) 
+partialPlot(random.forest,trainnonassessed, x.var= "Human.Footprint.Index", n.pt=10, which.class= "Thr", main=NULL, ylab="Partial dependence", xlab="log(Human Footprint Index)", cex.main=1) # n.pt smoothes the graph - number of datapoints from which the function is computed
+partialPlot(random.forest,trainnonassessed, x.var= "ForestLoss", n.pt=10, which.class= "Thr", main=NULL, ylab="Partial dependence", xlab="log(Forest loss)", cex.main=1) 
+partialPlot(random.forest,trainnonassessed, x.var= "Population", n.pt=10, which.class= "Thr", main=NULL, ylab="Partial dependence", xlab="log(Population density)" ,cex.main=1)
+partialPlot(random.forest,trainnonassessed, x.var= "AreaProtected", n.pt=10, which.class= "Thr", main=NULL, ylab="Partial dependence", xlab="log(Percentage prea protected)", cex.main=1)
+
+# getTree(random.forest,k=1) - but can only see split for individual trees, no average.
+
+################################################################################################################################
+####################################### Predicting the status of nonassessed species ###########################################
+
+resultsnonassessed<- predict(rf.model$finalModel, nonassessedspecies, type="prob")
+resultsnonassessed<- resultsnonassessed[,2]
+#print(resultsnonassessed)
+scorenonassessed<- ifelse(resultsnonassessed<=cutoff,"nonThr", "Thr")
+scorenonassessed<- as.character(scorenonassessed)
+resultsnonassessed<-cbind(resultsnonassessed, scorenonassessed)
+scorenonassessed<-as.factor(scorenonassessed)
+summary(scorenonassessed)
+
+write.csv(resultsnonassessed, file="insertpath") #insert correct path name to save prediction results for non assessed species
+
+
+
+
+####Manually assign different values to tunelength###########################################
+#1 - takes XX minutes
+start_time <- Sys.time()
+model_1 <- train(as.factor(binary) ~ ., 
+               data = assessed, 
+               method = "rf",
+               tunelength=1,
+               ntree= 500,
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+print(model)
+plot(model)
+
+###Predict status of DD species
+er_pred_1 <- predict(model_1, nonassessedspecies)
+summary(er_pred_1)
+
+x_1 <- evalm(model_1)
+
+## get roc curve plotted in ggplot2
+
+x_1$roc
+
+## get AUC and other metrics
+
+x_1$stdres
+
+summary(model$finalModel)
+
+
+
+
+####Manually assign different values to tunelength###########################################
+#10 - takes 18 minutes
 start_time <- Sys.time()
 model <- train(as.factor(binary) ~ ., 
                data = assessed, 
                method = "rf",
-               tunelength=15,
+               tunelength=10,
                ntree= 500,
                trControl = model_control)
 end_time <- Sys.time()
@@ -443,6 +651,61 @@ x$stdres
 
 summary(model$finalModel)
 
+####Manually assign different values to tunelength###########################################
+#20 - takes 19 minutes
+start_time <- Sys.time()
+model_20 <- train(as.factor(binary) ~ ., 
+               data = assessed, 
+               method = "rf",
+               tunelength=20,
+               ntree= 500,
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+print(model_20)
+plot(model_20)
+
+###Predict status of DD species
+er_pred_20 <- predict(model_20, nonassessedspecies)
+summary(er_pred_20)
+
+x <- evalm(model_20)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
+summary(model_20$finalModel)
+
+
+####Plot several ROCs together
+res <- evalm(list(model,model_1,model_20),gnames='rf')
+
+#######################################################################################################
+###Trying to add cut off point based on Youden index##################################################
+######################################################################################################
+###Example from https://github.com/thie1e/cutpointr
+mcp <- multi_cutpointr(suicide, class = suicide, pos_class = "yes", 
+                       use_midpoints = TRUE, silent = TRUE) 
+summary(mcp)
+
+
+rocobj <-x$roc
+coords(rocobj, "best")
+coords(rocobj, x="best", input="threshold", best.method="youden")
+
+data(aSAH)
+rocobj <- roc(aSAH$outcome, aSAH$s100b)
+coords(rocobj, "best")
+coords(rocobj, x="best", input="threshold", best.method="youden")
+
+
+##################################################################################
 ####Try this to get stats
 
 # NOT RUN {

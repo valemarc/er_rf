@@ -28,6 +28,7 @@ install.packages("pROC")
 install.packages("ranger")
 devtools::install_cran("dplyr", force=TRUE)
 install.packages("MLeval")
+install.packages("InformationValue")  # For stable CRAN version
 
 #Open libraries
 library(caret)
@@ -51,3 +52,4 @@ library(pROC)
 library(ranger)
 library(dplyr)
 library(MLeval)
+library(InformationValue)
