@@ -439,27 +439,291 @@ model_control <- trainControl(## 10-fold CV
 print(model)
 plot(model)
 
+###Create a smaller sample for testing
+assessed_small <- sample_n(assessed, 200)
+summary(assessed_small)
+
+
+#######################################################################################
+#############Get a ROC curve for each fold#############################################
+#######################################################################################
+
+###Takes 27 min
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary)
+#mtry <- sqrt(ncol(assessed[,2:36]))
+
+# run a random forest model
+start_time <- Sys.time()
+model_15 <- train(as.factor(binary) ~ ., 
+               data = assessed, 
+               method = "rf",
+               tunelength=15,
+               ntree= 500,
+               trControl = model_control, 
+               metric="ROC")
+end_time <- Sys.time()
+end_time - start_time
+
+print(model_15)
+plot(model_15)
+
+#####ROC curve for final average value
+for_lift <- data.frame(binary = model_15$pred$obs, rf = model_15$pred$Thr)
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
+
+# Plot ROC ----------------------------------------------------------------
+
+ggplot(lift_obj$data) +
+  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
+  scale_color_discrete(guide = guide_legend(title = "method"))#
+
+
+#Get a ROC curve for each fold#############################################
+for_lift <- data.frame(binary = model_15$pred$obs, rf = model_15$pred$Thr, resample = model_15$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
+
+
+# Plot ROC
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))
+
+###To calculate AUC
+ddply(model_15$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+
+####from https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
+#a small concern is that train always estimates slightly different AUC values than plot.roc
+#and pROC::auc (absolute difference < 0.005), although twoClassSummary uses pROC::auc to estimate the AUC. 
+#Edit: I assume this occurs because the ROC from train is the average of the AUC using the separate CV-Sets
+#and here we are calculating the AUC over all resamples simultaneously to obtain the overall AUC.
+
+
 ###Predict status of assessed species
-er_pred <- predict(model,assessed)
+er_pred <- predict(model_15,assessed)
 summary(er_pred)
 
-x <- evalm(model)
+er_pred_dd <- predict(model_15,nonassessedspecies)
+summary(er_pred_dd)
 
-## get roc curve plotted in ggplot2
+##################repeat with different tuning parameters
+###Tunelength 10
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary)
+#mtry <- sqrt(ncol(assessed[,2:36]))
 
-x$roc
+# run a random forest model
+start_time <- Sys.time()
+model_10 <- train(as.factor(binary) ~ ., 
+                  data = assessed, 
+                  method = "rf",
+                  tunelength=10,
+                  ntree= 500,
+                  trControl = model_control, 
+                  metric="ROC")
+end_time <- Sys.time()
+end_time - start_time
 
-## get AUC and other metrics
+print(model_10)
+plot(model_10)
 
-x$stdres
+#####ROC curve for final average value
+for_lift <- data.frame(binary = model_10$pred$obs, rf = model_10$pred$Thr)
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
 
-summary(model$finalModel)
+# Plot ROC ----------------------------------------------------------------
+
+ggplot(lift_obj$data) +
+  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
+  scale_color_discrete(guide = guide_legend(title = "method"))#
+
+
+#Get a ROC curve for each fold#############################################
+for_lift <- data.frame(binary = model_10$pred$obs, rf = model_10$pred$Thr, resample = model_10$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
+
+
+# Plot ROC
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))
+
+###To calculate AUC
+ddply(model_10$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+
+##################repeat with different tuning parameters
+###Tunelength 20
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary)
+#mtry <- sqrt(ncol(assessed[,2:36]))
+
+# run a random forest model
+start_time <- Sys.time()
+model_20 <- train(as.factor(binary) ~ ., 
+                  data = assessed, 
+                  method = "rf",
+                  tunelength=20,
+                  ntree= 500,
+                  trControl = model_control, 
+                  metric="ROC")
+end_time <- Sys.time()
+end_time - start_time
+
+print(model_20)
+plot(model_20)
+
+#####ROC curve for final average value
+for_lift <- data.frame(binary = model_20$pred$obs, rf = model_20$pred$Thr)
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
+
+# Plot ROC ----------------------------------------------------------------
+
+ggplot(lift_obj$data) +
+  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
+  scale_color_discrete(guide = guide_legend(title = "method"))#
+
+
+#Get a ROC curve for each fold#############################################
+for_lift <- data.frame(binary = model_20$pred$obs, rf = model_20$pred$Thr, resample = model_20$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
+
+
+# Plot ROC
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))
+
+###To calculate AUC
+ddply(model_20$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+
+
+
+##################repeat with different tuning parameters
+###Tunelength 80
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary)
+#mtry <- sqrt(ncol(assessed[,2:36]))
+
+# run a random forest model
+start_time <- Sys.time()
+model_80 <- train(as.factor(binary) ~ ., 
+                  data = assessed, 
+                  method = "rf",
+                  tunelength=80,
+                  ntree= 500,
+                  trControl = model_control, 
+                  metric="ROC")
+end_time <- Sys.time()
+end_time - start_time
+
+print(model_80)
+plot(model_80)
+
+#####ROC curve for final average value
+for_lift <- data.frame(binary = model_80$pred$obs, rf = model_80$pred$Thr)
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
+
+# Plot ROC ----------------------------------------------------------------
+
+ggplot(lift_obj$data) +
+  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
+  scale_color_discrete(guide = guide_legend(title = "method"))#
+
+
+#Get a ROC curve for each fold#############################################
+for_lift <- data.frame(binary = model_80$pred$obs, rf = model_80$pred$Thr, resample = model_80$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
+
+
+# Plot ROC
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))
+
+###To calculate AUC
+ddply(model_20$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+
+
+####from https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
+#a small concern is that train always estimates slightly different AUC values than plot.roc
+#and pROC::auc (absolute difference < 0.005), although twoClassSummary uses pROC::auc to estimate the AUC. 
+#Edit: I assume this occurs because the ROC from train is the average of the AUC using the separate CV-Sets
+#and here we are calculating the AUC over all resamples simultaneously to obtain the overall AUC.
+
+
+###Predict status of assessed species
+er_pred <- predict(model_15,assessed)
+summary(er_pred)
+
+er_pred_dd <- predict(model_15,nonassessedspecies)
+summary(er_pred_dd)
+
+###Predict status of assessed species
+er_pred <- predict(model_10,assessed)
+summary(er_pred)
+
+er_pred_dd <- predict(model_10,nonassessedspecies)
+summary(er_pred_dd)
+
+
+
 
 
 ##  Interpreting probabilistic results####
-###Predict status of DD species
-er_pred <- predict(model, assessed,type="prob")
-results_er_pred<-predict(model,assessed,type="prob")[,2]
+er_pred <- predict(model_15, assessed,type="prob")
+results_er_pred<-predict(model_15,assessed,type="prob")[,2]
 summary(er_pred)
 print(er_pred)
 
@@ -509,7 +773,17 @@ score<- ifelse(results_er_pred<=cutoff,"nonThr", "Thr")
 confusion<- confusionMatrix(score,trainB, positive="Thr")
 confusion
 
+x <- evalm(model_15)
 
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
+summary(model_15$finalModel)
 
 
 
