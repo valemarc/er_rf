@@ -12,6 +12,367 @@ summary(BM)
 typeof(BM)
 str(BM)
 
+###Centering and scaling numeric variables################
+###Centre and scale variables
+trainassessed_preprocess <- preProcess(BM[,-1], method = c("center", "scale"))
+trainassessed_preprocess
+trainassessed_preprocess$method
+
+###As the function preprocess doesn't actually preprocess the data, we need to do this
+trainTransformed <- predict(trainassessed_preprocess, BM)
+head(trainTransformed)
+#preProcValues 
+#BM_new2_Transformed <- predict(preProcValues, BM_new2)
+#testTransformed <- predict(preProcValues, test)
+
+#dim(BM_new2_Transformed)
+#names(BM_new2_Transformed)
+#summary(BM_new2_Transformed)
+#typeof(BM_new2_Transformed)
+#str(BM_new2_Transformed)
+
+
+###Create dataframe with different types of variables
+BM_other <- trainTransformed[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+BM_cat <- trainTransformed[,c("ID", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
+BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+
+
+###Categorical variables transformed to orthogonal dummy variables##############
+###Create the dummy variables
+dummies <- dummyVars(" ~ .", data = BM_cat, fullRank=T)
+head(dummies)
+BM_cat_new <- data.frame(predict(dummies, newdata = BM_cat))
+summary(BM_cat_new)
+
+###Remove highly correlated variables####################
+###Create a correlation matrix
+descrCor <-cor(BM_numeric[,-1], y = NULL, use = "complete.obs",
+               method = c("pearson", "kendall", "spearman"))
+#descrCor <-  cor(BM_numeric[,-1])
+summary(descrCor[upper.tri(descrCor)])
+
+###Visualise correlation
+corrplot(descrCor)
+
+###Detect highly correlated variables and exclude them (but there are none)
+highlyCorDescr <- findCorrelation(descrCor, cutoff = .9) ###as this is zero there is no need to delete any of the columns
+#filteredDescr <- BM_numeric[,-highlyCorDescr]
+#descrCor2 <- cor(filteredDescr)
+#summary(descrCor2[upper.tri(descrCor2)])
+
+####Merge dataframes with variables of different categories back together
+BM_new <- merge(BM_other,BM_cat_new, by = "ID")
+###Look at the data
+dim(BM_new) # check dataset
+names(BM_new)
+summary(BM_new)
+typeof(BM_new)
+str(BM_new)
+
+###Removed variables with near-zero variance##############
+nearZeroVar(BM_new, saveMetrics = FALSE) # returns a vector of integers corresponding to the column position of the problematic predictors
+head(BM_new)
+nzv <- nearZeroVar(BM_new)
+check <- BM_new[, nzv]
+head(check)
+BM_new2 <- BM_new[, -nzv]
+dim(BM_new2)
+names(BM_new2)
+summary(BM_new2)
+typeof(BM_new2)
+str(BM_new2)
+
+
+###Partition the dataset
+# Separate assessed species
+assessed<- data.frame(subset(BM_new2, RedList.DD!=1))
+assessed <- assessed[complete.cases(assessed), ]
+#row.names(assessed)<- assessed$Binomial
+
+assessed$binary<-"nonThr"
+assessed$binary[assessed$RedList.VU == 1]="Thr"
+assessed$binary[assessed$RedList.EN == 1]="Thr"
+assessed$binary[assessed$RedList.CR == 1]="Thr"
+dim(assessed)
+head(assessed)
+
+#assessed<- subset(assessed, select= -c(Binomial,RedList, binary, Genus))
+
+# Setting nonassessed species aside
+nonassessedspecies<- data.frame(subset (BM_new2, RedList.DD==1))
+nonassessedspecies <- nonassessedspecies[complete.cases(nonassessedspecies), ]
+nonassessedspecies$binary<-NA
+head(nonassessedspecies)
+dim(nonassessedspecies)
+
+#row.names(nonassessedspecies)<- nonassessedspecies$Binomial
+#nonassessedspecies<- subset(nonassessedspecies,select= -c(Binomial,RedList, Genus))
+
+###Create a smaller sample for testing in case it's useful
+assessed_small <- sample_n(assessed, 200)
+summary(assessed_small)
+
+#######################################################################################
+#############Get a ROC curve for each fold#############################################
+#######################################################################################
+
+###Takes 27 min
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary)
+
+# run a random forest model
+start_time <- Sys.time()
+model_15 <- train(as.factor(binary) ~ ., 
+                  data = assessed, 
+                  method = "rf",
+                  tunelength=15, ####see https://rpubs.com/phamdinhkhanh/389752
+                  ntree= 500,
+                  trControl = model_control, 
+                  metric="ROC")
+end_time <- Sys.time()
+end_time - start_time
+
+print(model_15)
+plot(model_15)
+
+
+###Using evalm
+###as per https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
+## run MLeval
+res <- evalm(model_15)
+## get ROC
+res$roc
+## get calibration curve
+res$cc
+## get precision recall gain curve
+res$prg
+
+#####ROC curve for final average value
+for_lift <- data.frame(binary = model_15$pred$obs, rf = model_15$pred$Thr)
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
+
+# Plot ROC ----------------------------------------------------------------
+ggplot(lift_obj$data) +
+  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
+  scale_color_discrete(guide = guide_legend(title = "method"))#
+
+summary(model_15$finalModel)
+
+###Youden index
+#thresholder - This function uses the resampling results from a train object to generate performance statistics
+#over a set of probability thresholds for two-class problems.
+resample_stats <- thresholder(model_15,
+                              threshold = seq(.1, 1, by = 0.0005),
+                              final = TRUE,
+                              statistics = "J")
+ggplot(resample_stats, aes(x = prob_threshold, y = J)) +
+  geom_point()
+
+###Extract optimal probability threshold (that maximises Youden)
+threshold <- resample_stats[which.max(resample_stats$J),]
+threshold <- threshold$prob_threshold
+
+# plot roc using pROC package
+library(pROC)
+myRoc <- roc(predictor = model_15$pred$Thr, response = model_15$pred$obs, positive = 'Thr')
+plot(myRoc)
+
+# look at TPR and TNR distribution over threshold
+matplot(data.frame(myRoc$sensitivities, myRoc$specificities), x = myRoc$thresholds, type='l', xlab = 'threshold', ylab='TPR, TNR')
+legend('bottomright', legend=c('TPR', 'TNR'), lty=1:2, col=1:2)
+
+#Get a ROC curve for each fold#############################################
+for_lift <- data.frame(binary = model_15$pred$obs, rf = model_15$pred$Thr, resample = model_15$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
+
+# Plot ROC
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))
+
+###To calculate AUC
+library(plyr)
+library(MLmetrics)
+ddply(model_15$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+ddply(model_15$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+
+####from https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
+#a small concern is that train always estimates slightly different AUC values than plot.roc
+#and pROC::auc (absolute difference < 0.005), although twoClassSummary uses pROC::auc to estimate the AUC. 
+#Edit: I assume this occurs because the ROC from train is the average of the AUC using the separate CV-Sets
+#and here we are calculating the AUC over all resamples simultaneously to obtain the overall AUC.
+
+
+###Predict status of assessed species
+er_pred <- predict(model_15,assessed)
+summary(er_pred)
+
+er_pred_dd <- predict(model_15,nonassessedspecies)
+summary(er_pred_dd)
+
+
+
+####Currently not working/still to code##################
+# Get a confusion matrix by pooling the out-of-sample predictions
+###see https://community.rstudio.com/t/compute-confusion-matrix-using-k-fold-cross-validation-in-caret-train/42412/4
+confusionMatrix(model_15$pred$pred, model_15$pred$obs) ###gives empty data frame and warning
+##[1] nonThr Thr   
+#<0 rows> (or 0-length row.names)
+#Warning message:
+#  In Ops.factor(predictedScores, threshold) : ‘<’ not meaningful for factors
+####
+####Recalculate class (Thr/Non threatened) based on new threshold (0.64)
+label <- ifelse(model_15$pred$Thr > threshold, 'Thr', 'nonThr')
+label <- as.factor(label)
+
+xtab <- table(label, model$pred$obs)
+confusionMatrix(xtab)
+
+
+###Predict status of assessed species
+er_pred <- predict(model_15,assessed)
+summary(er_pred)
+
+er_pred_dd <- predict(model_15,nonassessedspecies)
+summary(er_pred_dd)
+
+###Predict status of assessed species
+er_pred <- predict(model_10,assessed)
+summary(er_pred)
+
+er_pred_dd <- predict(model_10,nonassessedspecies)
+summary(er_pred_dd)
+
+
+
+
+
+##  Interpreting probabilistic results####
+er_pred <- predict(model_15, assessed,type="prob")
+results_er_pred<-predict(model_15,assessed,type="prob")[,2]
+summary(er_pred)
+print(er_pred)
+
+
+###Create a daframe with predicted and observed status
+binary<- assessed$binary # define classes
+binary2<- as.vector(binary)
+temp <- merge(assessed, BM[, c("ID","RedList")], by = "ID")
+RL_status<-temp$RedList
+RL_status<-as.character(RL_status)
+dataframe<- data.frame(cbind(results_er_pred, RL_status, binary2))
+write.csv(dataframe, "Observed_predicted.csv") # insert correct path name to save results as .csv
+
+
+
+###Plot probability classes
+results_er_pred<- as.vector(results_er_pred)
+dataframe<- data.frame(cbind(results_er_pred,binary2))
+dataframe$results_er_pred<- as.numeric(as.character(dataframe$results_er_pred)) # as numeric changes the variable value. needs correction
+par(mfrow=c(2,2))
+hist(dataframe$results_er_pred, xlab="Probability of extinction", main=NULL, cex.main=1, ylim=c(0,50))
+abline(v=0.42,col=3,lty=3) # set abline as correct probability threshold from results
+hist(dataframe$results_er_pred[dataframe$binary2=="nonThr"], xlab="Probability of extinction", main=NULL, cex.main=1, ylim=c(0,50), xlim=c(0,1))
+abline(v=0.42,col=3,lty=3)
+hist(dataframe$results_er_pred[dataframe$binary2=="Thr"], xlab="Probability of extinction", main=NULL, cex.main=1, xlim=c(0,1))
+abline(v=0.42,col=3,lty=3)
+
+preds<- prediction(predictions=results_er_pred, labels=trainB) #  indicate which model results, e.g. results.rf
+print(preds)
+
+# AUC
+AUC<- performance(preds, "auc")
+AUC
+myROC<- performance(preds, "tpr", "fpr")
+myROCtable<- data.frame(cbind(myROC@alpha.values[[1]],myROC@y.values[[1]],myROC@x.values[[1]])) # creating dataframe with cutoff, tpr, fpr
+# Youden's Index
+myROCtable$X4<- myROCtable$X2 - myROCtable$X3
+cutoff<- myROCtable$X1[which.max(myROCtable$X4)]
+cutoff
+Youden<- myROCtable$X4[which.max(myROCtable$X4)]
+Youden
+# ROC plot
+par(mfrow=c(1,1))
+plot(myROC, main=NULL, colorize=T, ylim= c(0,1))
+# Confusion matrix
+score<- ifelse(results_er_pred<=cutoff,"nonThr", "Thr")
+confusion<- confusionMatrix(score,trainB, positive="Thr")
+confusion
+
+x <- evalm(model_15)
+
+## get roc curve plotted in ggplot2
+
+x$roc
+
+## get AUC and other metrics
+
+x$stdres
+
+summary(model_15$finalModel)
+
+## run MLeval
+
+res <- evalm(rfFit)
+
+## get ROC
+
+res$roc
+
+## get calibration curve
+
+res$cc
+
+## get precision recall gain curve
+
+res$prg
+
+
+
+
+
+########################################################################################################
+################Steps used previously###################################################################
+########################################################################################################
+####Model tuning parameters (takes about 25 min)
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE)
+#mtry <- sqrt(ncol(assessed[,2:36]))
+# run a random forest model
+start_time <- Sys.time()
+model <- train(as.factor(binary) ~ ., 
+               data = assessed, 
+               method = "rf",
+               tunelength=15,
+               ntree= 500,
+               trControl = model_control)
+end_time <- Sys.time()
+end_time - start_time
+
+print(model)
+plot(model)
+
+
+
+
 ####################################################
 ###Create training and testing datasets#############
 ####################################################
@@ -317,207 +678,7 @@ er_pred <- predict(model, nonassessedspecies)
 summary(er_pred)
 ###All species predicted to be threatened
 
-#####################################################################################################
-############FINAL MODEL##############################################################################
-#####################################################################################################
-###Centering and scaling numeric variables################
-###Centre and scale variables
-trainassessed_preprocess <- preProcess(BM[,-1], method = c("center", "scale"))
-trainassessed_preprocess
-trainassessed_preprocess$method
 
-###As the function preprocess doesn't actually preprocess the data, we need to do this
-trainTransformed <- predict(trainassessed_preprocess, BM)
-head(trainTransformed)
-#preProcValues 
-#BM_new2_Transformed <- predict(preProcValues, BM_new2)
-#testTransformed <- predict(preProcValues, test)
-
-#dim(BM_new2_Transformed)
-#names(BM_new2_Transformed)
-#summary(BM_new2_Transformed)
-#typeof(BM_new2_Transformed)
-#str(BM_new2_Transformed)
-
-
-###Create dataframe with different types of variables
-BM_other <- trainTransformed[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
-BM_cat <- trainTransformed[,c("ID", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
-BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
-
-
-###Categorical variables transformed to orthogonal dummy variables##############
-###Create the dummy variables
-dummies <- dummyVars(" ~ .", data = BM_cat, fullRank=T)
-head(dummies)
-BM_cat_new <- data.frame(predict(dummies, newdata = BM_cat))
-summary(BM_cat_new)
-
-###Remove highly correlated variables####################
-###Create a correlation matrix
-descrCor <-cor(BM_numeric[,-1], y = NULL, use = "complete.obs",
-               method = c("pearson", "kendall", "spearman"))
-#descrCor <-  cor(BM_numeric[,-1])
-summary(descrCor[upper.tri(descrCor)])
-
-###Visualise correlation
-corrplot(descrCor)
-
-###Detect highly correlated variables and exclude them (but there are none)
-highlyCorDescr <- findCorrelation(descrCor, cutoff = .9) ###as this is zero there is no need to delete any of the columns
-#filteredDescr <- BM_numeric[,-highlyCorDescr]
-#descrCor2 <- cor(filteredDescr)
-#summary(descrCor2[upper.tri(descrCor2)])
-
-####Merge dataframes with variables of different categories back together
-BM_new <- merge(BM_other,BM_cat_new, by = "ID")
-###Look at the data
-dim(BM_new) # check dataset
-names(BM_new)
-summary(BM_new)
-typeof(BM_new)
-str(BM_new)
-
-###Removed variables with near-zero variance##############
-nearZeroVar(BM_new, saveMetrics = FALSE) # returns a vector of integers corresponding to the column position of the problematic predictors
-head(BM_new)
-nzv <- nearZeroVar(BM_new)
-check <- BM_new[, nzv]
-head(check)
-BM_new2 <- BM_new[, -nzv]
-dim(BM_new2)
-names(BM_new2)
-summary(BM_new2)
-typeof(BM_new2)
-str(BM_new2)
-
-
-###Partition the dataset
-# Separate assessed species
-assessed<- data.frame(subset(BM_new2, RedList.DD!=1))
-assessed <- assessed[complete.cases(assessed), ]
-#row.names(assessed)<- assessed$Binomial
-
-assessed$binary<-"nonThr"
-assessed$binary[assessed$RedList.VU == 1]="Thr"
-assessed$binary[assessed$RedList.EN == 1]="Thr"
-assessed$binary[assessed$RedList.CR == 1]="Thr"
-dim(assessed)
-head(assessed)
-
-#assessed<- subset(assessed, select= -c(Binomial,RedList, binary, Genus))
-
-# Setting nonassessed species aside
-nonassessedspecies<- data.frame(subset (BM_new2, RedList.DD==1))
-nonassessedspecies <- nonassessedspecies[complete.cases(nonassessedspecies), ]
-nonassessedspecies$binary<-NA
-head(nonassessedspecies)
-dim(nonassessedspecies)
-
-#row.names(nonassessedspecies)<- nonassessedspecies$Binomial
-#nonassessedspecies<- subset(nonassessedspecies,select= -c(Binomial,RedList, Genus))
-
-####Repeat model tuning parameters (takes about 25 min)
-####Predicts 4 species threatened, 261 non-threatened, uses 63 as final mtry value
-model_control <- trainControl(## 10-fold CV
-  method = "cv",
-  number = 10,
-  savePredictions = TRUE, 
-  classProbs = TRUE)
-#mtry <- sqrt(ncol(assessed[,2:36]))
-    # run a random forest model
-      start_time <- Sys.time()
-      model <- train(as.factor(binary) ~ ., 
-                     data = assessed, 
-                     method = "rf",
-                     tunelength=15,
-                     ntree= 500,
-                     trControl = model_control)
-      end_time <- Sys.time()
-      end_time - start_time
-
-print(model)
-plot(model)
-
-###Create a smaller sample for testing
-assessed_small <- sample_n(assessed, 200)
-summary(assessed_small)
-
-
-#######################################################################################
-#############Get a ROC curve for each fold#############################################
-#######################################################################################
-
-###Takes 27 min
-model_control <- trainControl(## 10-fold CV
-  method = "cv",
-  number = 10,
-  savePredictions = TRUE, 
-  classProbs = TRUE,
-  summaryFunction = twoClassSummary)
-#mtry <- sqrt(ncol(assessed[,2:36]))
-
-# run a random forest model
-start_time <- Sys.time()
-model_15 <- train(as.factor(binary) ~ ., 
-               data = assessed, 
-               method = "rf",
-               tunelength=15,
-               ntree= 500,
-               trControl = model_control, 
-               metric="ROC")
-end_time <- Sys.time()
-end_time - start_time
-
-print(model_15)
-plot(model_15)
-
-#####ROC curve for final average value
-for_lift <- data.frame(binary = model_15$pred$obs, rf = model_15$pred$Thr)
-lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
-
-# Plot ROC ----------------------------------------------------------------
-
-ggplot(lift_obj$data) +
-  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
-  scale_color_discrete(guide = guide_legend(title = "method"))#
-
-
-#Get a ROC curve for each fold#############################################
-for_lift <- data.frame(binary = model_15$pred$obs, rf = model_15$pred$Thr, resample = model_15$pred$Resample)
-lift_df <-  data.frame()
-for (fold in unique(for_lift$resample)) {
-  fold_df <- dplyr::filter(for_lift, resample == fold)
-  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
-  lift_obj_data$fold = fold
-  lift_df = rbind(lift_df, lift_obj_data)
-}
-
-lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
-
-
-# Plot ROC
-ggplot(lift_df) +
-  geom_line(aes(1 - Sp, Sn, color = fold)) +
-  scale_color_discrete(guide = guide_legend(title = "Fold"))
-
-###To calculate AUC
-ddply(model_15$pred, "Resample", summarise,
-      accuracy = Accuracy(pred, obs))
-
-####from https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
-#a small concern is that train always estimates slightly different AUC values than plot.roc
-#and pROC::auc (absolute difference < 0.005), although twoClassSummary uses pROC::auc to estimate the AUC. 
-#Edit: I assume this occurs because the ROC from train is the average of the AUC using the separate CV-Sets
-#and here we are calculating the AUC over all resamples simultaneously to obtain the overall AUC.
-
-
-###Predict status of assessed species
-er_pred <- predict(model_15,assessed)
-summary(er_pred)
-
-er_pred_dd <- predict(model_15,nonassessedspecies)
-summary(er_pred_dd)
 
 ##################repeat with different tuning parameters
 ###Tunelength 10
@@ -703,87 +864,7 @@ ddply(model_20$pred, "Resample", summarise,
 #and here we are calculating the AUC over all resamples simultaneously to obtain the overall AUC.
 
 
-###Predict status of assessed species
-er_pred <- predict(model_15,assessed)
-summary(er_pred)
 
-er_pred_dd <- predict(model_15,nonassessedspecies)
-summary(er_pred_dd)
-
-###Predict status of assessed species
-er_pred <- predict(model_10,assessed)
-summary(er_pred)
-
-er_pred_dd <- predict(model_10,nonassessedspecies)
-summary(er_pred_dd)
-
-
-
-
-
-##  Interpreting probabilistic results####
-er_pred <- predict(model_15, assessed,type="prob")
-results_er_pred<-predict(model_15,assessed,type="prob")[,2]
-summary(er_pred)
-print(er_pred)
-
-
-###Create a daframe with predicted and observed status
-binary<- assessed$binary # define classes
-binary2<- as.vector(binary)
-temp <- merge(assessed, BM[, c("ID","RedList")], by = "ID")
-RL_status<-temp$RedList
-RL_status<-as.character(RL_status)
-dataframe<- data.frame(cbind(results_er_pred, RL_status, binary2))
-write.csv(dataframe, "Observed_predicted.csv") # insert correct path name to save results as .csv
-
-
-
-###Plot probability classes
-results_er_pred<- as.vector(results_er_pred)
-dataframe<- data.frame(cbind(results_er_pred,binary2))
-dataframe$results_er_pred<- as.numeric(as.character(dataframe$results_er_pred)) # as numeric changes the variable value. needs correction
-par(mfrow=c(2,2))
-hist(dataframe$results_er_pred, xlab="Probability of extinction", main=NULL, cex.main=1, ylim=c(0,50))
-abline(v=0.42,col=3,lty=3) # set abline as correct probability threshold from results
-hist(dataframe$results_er_pred[dataframe$binary2=="nonThr"], xlab="Probability of extinction", main=NULL, cex.main=1, ylim=c(0,50), xlim=c(0,1))
-abline(v=0.42,col=3,lty=3)
-hist(dataframe$results_er_pred[dataframe$binary2=="Thr"], xlab="Probability of extinction", main=NULL, cex.main=1, xlim=c(0,1))
-abline(v=0.42,col=3,lty=3)
-
-preds<- prediction(predictions=results_er_pred, labels=trainB) #  indicate which model results, e.g. results.rf
-print(preds)
-
-# AUC
-AUC<- performance(preds, "auc")
-AUC
-myROC<- performance(preds, "tpr", "fpr")
-myROCtable<- data.frame(cbind(myROC@alpha.values[[1]],myROC@y.values[[1]],myROC@x.values[[1]])) # creating dataframe with cutoff, tpr, fpr
-# Youden's Index
-myROCtable$X4<- myROCtable$X2 - myROCtable$X3
-cutoff<- myROCtable$X1[which.max(myROCtable$X4)]
-cutoff
-Youden<- myROCtable$X4[which.max(myROCtable$X4)]
-Youden
-# ROC plot
-par(mfrow=c(1,1))
-plot(myROC, main=NULL, colorize=T, ylim= c(0,1))
-# Confusion matrix
-score<- ifelse(results_er_pred<=cutoff,"nonThr", "Thr")
-confusion<- confusionMatrix(score,trainB, positive="Thr")
-confusion
-
-x <- evalm(model_15)
-
-## get roc curve plotted in ggplot2
-
-x$roc
-
-## get AUC and other metrics
-
-x$stdres
-
-summary(model_15$finalModel)
 
 
 
