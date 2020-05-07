@@ -33,6 +33,10 @@ install.packages("mlbench")
 install.packages("ggplot2")
 install.packages("plyr")
 install.packages("MLmetrics")
+install.packages("ggraph")
+install.packages("igraph")
+
+
 
 #Open libraries
 library(caret)
@@ -61,3 +65,5 @@ library(InformationValue)
 library(mlbench)
 library(ggplot2)
 library(MLmetrics)
+library(ggraph)
+library(igraph)
