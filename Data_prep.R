@@ -776,7 +776,7 @@ threshold_c
 pred <- predict(model_15_c, newdata = assessed, type="prob")
 label_final_c <- as.factor(ifelse(pred$Thr > threshold_c, 'Thr', 'nonThr'))
 summary(label_final_c)
-ConfusionMatrix(model_15_c$final$y,label_final_c)
+ConfusionMatrix(label_final_c, model_15_c$final$y)
 
 ###Compare with Lucie's threshold
 label_final_Bland <- as.factor(ifelse(pred$Thr > 0.6, 'Thr', 'nonThr'))
@@ -927,7 +927,7 @@ threshold_d
 pred <- predict(model_15_d, newdata = assessed, type="prob")
 label_final_d <- as.factor(ifelse(pred$Thr > threshold_d, 'Thr', 'nonThr'))
 summary(label_final_d)
-ConfusionMatrix(model_15_d$final$y,label_final_d)
+ConfusionMatrix(label_final_d, model_15_d$final$y)
 
 ###Compare with Lucie's threshold
 label_final_Bland <- as.factor(ifelse(pred$Thr > 0.6, 'Thr', 'nonThr'))
