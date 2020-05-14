@@ -35,7 +35,7 @@ install.packages("plyr")
 install.packages("MLmetrics")
 install.packages("ggraph")
 install.packages("igraph")
-
+install.packages("missForest")
 
 
 #Open libraries
@@ -67,3 +67,4 @@ library(ggplot2)
 library(MLmetrics)
 library(ggraph)
 library(igraph)
+library(missForest)

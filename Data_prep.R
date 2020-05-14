@@ -34,10 +34,19 @@ head(trainTransformed)
 
 
 ###Create dataframe with different types of variables
-BM_other <- trainTransformed[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+#BM_other <- trainTransformed[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+#BM_cat <- trainTransformed[,c("ID", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
+#BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+
+#BM_other <- trainTransformed[,c("ID", "Binomial", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+#BM_cat <- trainTransformed[,c("ID", "Order", "Family", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
+#BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+
+
+###If we want to impute missing data without turning the taxonomic variables into dummy variables
+BM_other <- trainTransformed[,c("ID", "Binomial", "Order", "Family", "Genus")]
 BM_cat <- trainTransformed[,c("ID", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
 BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
-
 
 ###Categorical variables transformed to orthogonal dummy variables##############
 ###Create the dummy variables
@@ -63,8 +72,29 @@ highlyCorDescr ###as this is zero there is no need to delete any of the columns
 #descrCor2 <- cor(filteredDescr)
 #summary(descrCor2[upper.tri(descrCor2)])
 
+
+####Impute missing values
+###https://stats.stackexchange.com/questions/226803/what-is-the-proper-way-to-use-rfimpute-imputation-by-random-forest-in-r
+#I tried BM_new2_imp <- missForest(BM_new2)
+###Error in randomForest.default(x = obsX, y = obsY, ntree = ntree, mtry = mtry,  : 
+#Can not handle categorical predictors with more than 53 categories.
+#it's Genus that has more than 53 categories
+sapply(BM_new2[,sapply(BM_new2, is.factor)], nlevels)
+
+###impute missing values
+BM_cat_new_imp <- missForest(BM_cat_new, verbose = TRUE)
+#warning: In randomForest.default(x = obsX, y = obsY, ntree = ntree,  ... :
+#The response has five or fewer unique values.  Are you sure you want to do regression?
+summary(BM_cat_new_imp$ximp)
+
+BM_numeric_new_imp <- missForest(BM_numeric, verbose = TRUE)
+#warning: In randomForest.default(x = obsX, y = obsY, ntree = ntree,  ... :
+#The response has five or fewer unique values.  Are you sure you want to do regression?
+summary(BM_numeric_new_imp$ximp)
+
+
 ####Merge dataframes with variables of different categories back together
-BM_new <- merge(BM_other,BM_cat_new, by = "ID")
+BM_new <- merge(BM_other,BM_cat_new_imp$ximp, by = "ID")
 ###Look at the data
 dim(BM_new) # check dataset
 names(BM_new)
@@ -72,13 +102,21 @@ summary(BM_new)
 typeof(BM_new)
 str(BM_new)
 
+BM_final <- merge(BM_new,BM_numeric_new_imp$ximp, by = "ID")
+###Look at the data
+dim(BM_final) # check dataset
+names(BM_final)
+summary(BM_final)
+typeof(BM_final)
+str(BM_final)
+
 ###Removed variables with near-zero variance##############
 #By default, caret uses freqCut = 19 and uniqueCut = 10, which is fairly conservative
 #o be a little more aggressive, when calling nearZeroVar(), recommended values would be: freqCut = 2 and uniqueCut = 20
 #From http://rstudio-pubs-static.s3.amazonaws.com/251240_12a8ecea8e144fada41120ddcf52b116.html
 ###Bland and Bohm used frequency ratio.999 and unique valuepercentage<0.0001) 
 #nearZeroVar(BM_new, freqCut = 999/1, uniqueCut = 0.01, saveMetrics = TRUE) # returns a vector of integers corresponding to the column position of the problematic predictors
-nzv <- nearZeroVar(BM_new, freqCut = 999/1, uniqueCut = 0.01, saveMetrics = FALSE)
+nzv <- nearZeroVar(BM_final, freqCut = 999/1, uniqueCut = 0.01, saveMetrics = FALSE)
 nzv ####again, this is zero so no need to delete anything
 ###look at the variables
 #nzv[nzv$nzv,][1:10,] 
@@ -86,7 +124,7 @@ nzv ####again, this is zero so no need to delete anything
 #head(check)
 ###exclude them from dataset
 #BM_new2 <- BM_new[, -nzv] ####not necessary at the moment as no variables are being excluded
-BM_new2 <- BM_new ###this is neeeded only if we don't delete any variables
+BM_new2 <- BM_final ###this is neeeded only if we don't delete any variables
 dim(BM_new2)
 names(BM_new2)
 summary(BM_new2)
@@ -94,10 +132,13 @@ typeof(BM_new2)
 str(BM_new2)
 
 
+
+
+
 ###Partition the dataset
 # Separate assessed species
 assessed<- data.frame(subset(BM_new2, RedList.DD!=1))
-assessed <- assessed[complete.cases(assessed), ]
+assessed <- assessed[complete.cases(assessed), ] ###could run just to test that nothing gets excluded if data have been imputed
 #row.names(assessed)<- assessed$Binomial
 
 assessed$binary<-"nonThr"
@@ -161,13 +202,15 @@ end_time - start_time
 ####Print 
 print(model_15)
 plot(model_15)
-print(model_15$finalModel) ####this gives the confusion matrix but doesn't calculate the accuracy
+print(model_15$finalModel) ####this gives the confusion matrix but doesn't calculate the accuracy 
 summary(model_15$finalModel)
 model_15$finalModel$confusion
 model_15$finalModel$ntree
 model_15$finalModel$mtry
 
-###Using evalm
+
+#https://www.quora.com/What-are-the-differences-between-ROC-and-AUC-curve-which-one-will-fit-best-in-which-scenario-I-am-looking-forward-to-some-subjective-answers
+###Using evalm  
 ###as per https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
 ## run MLeval
 res <- evalm(model_15)
@@ -220,11 +263,11 @@ ggplot(lift_df) +
 
 ###Plotting 
 # plot roc using pROC package
-myRoc <- roc(predictor = model_15$pred$Thr, response = model_15$pred$obs, positive = 'Thr')
-plot(myRoc)
+#myRoc <- roc(predictor = model_15$pred$Thr, response = model_15$pred$obs, positive = 'Thr')
+#plot(myRoc)
 # look at TPR and TNR distribution over threshold
-matplot(data.frame(myRoc$sensitivities, myRoc$specificities), x = myRoc$thresholds, type='l', xlab = 'threshold', ylab='TPR, TNR')
-legend('bottomright', legend=c('TPR', 'TNR'), lty=1:2, col=1:2)
+#matplot(data.frame(myRoc$sensitivities, myRoc$specificities), x = myRoc$thresholds, type='l', xlab = 'threshold', ylab='TPR, TNR')
+#legend('bottomright', legend=c('TPR', 'TNR'), lty=1:2, col=1:2)
 
 
 ###To calculate accuracy within individual folds
@@ -252,6 +295,40 @@ ggplot(resample_stats, aes(x = prob_threshold, y = J)) +
 threshold <- resample_stats[which.max(resample_stats$J),]
 threshold <- threshold$prob_threshold
 threshold
+
+####Recalculate class (Thr/Non threatened) based on new threshold (0.86)
+#pred_52 <- subset(model_15$pred, mtry==52)
+#label <- ifelse(pred_52$Thr > threshold, 'Thr', 'nonThr')
+#summary(label)
+#levels(label)
+#count(label == "Thr")
+#count(label == "nonThr")
+
+####To recalculate class (Thr/Non threatened) based on new threshold (0.86) using the final model
+pred <- predict(model_15, newdata = assessed, type="prob")
+label_final <- as.factor(ifelse(pred$Thr > threshold, 'Thr', 'nonThr'))
+summary(label_final)
+ConfusionMatrix(model_15$final$y,label_final)
+
+###Compare with Lucie's threshold
+label_final_Bland <- as.factor(ifelse(pred$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_final_Bland)
+
+###To predict status of DD species
+pred_DD <- predict(model_15, newdata = nonassessedspecies, type="prob")
+label_DD <- as.factor(ifelse(pred_DD$Thr > threshold, 'Thr', 'nonThr'))
+summary(label_DD)
+
+###Compare with Lucie's threshold
+label_DD_Bland <- as.factor(ifelse(pred_DD$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_DD_Bland )
+
+####Variable importance
+varImp <- varImp(model_15, scale = FALSE)
+varImp
+plot(varImp, top=20)
+
+
 
 
 ################################################################################################
@@ -315,7 +392,7 @@ tree_func(final_model = model_15_b$finalModel, tree_num)
 
 
 #####ROC curve for final average value
-for_lift <- data.frame(binary = model_15_b$pred$obs, rf = model_15_b5$pred$Thr)
+for_lift <- data.frame(binary = model_15_b$pred$obs, rf = model_15_b$pred$Thr)
 lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
 
 # Plot ROC ----------------------------------------------------------------
@@ -366,11 +443,519 @@ threshold_b <- resample_stats_b[which.max(resample_stats_b$J),]
 threshold_b <- threshold_b$prob_threshold
 threshold_b
 
-####
-####Recalculate class (Thr/Non threatened) based on new threshold (0.64)
-pred_7 <- subset(model_15_b$pred, mtry==7)
-label <- ifelse(pred_7$Thr > threshold_b, 'Thr', 'nonThr')
-#label <- as.factor(label)
+####To finish
+####Recalculate class (Thr/Non threatened) based on new threshold (0.86)
+#pred_52 <- subset(model_15$pred, mtry==52)
+#label <- ifelse(pred_52$Thr > threshold, 'Thr', 'nonThr')
+#summary(label)
+#levels(label)
+#count(label == "Thr")
+#count(label == "nonThr")
+
+####To recalculate class (Thr/Non threatened) based on new threshold (0.86) using the final model
+pred <- predict(model_15_b, newdata = assessed, type="prob")
+label_final_b <- as.factor(ifelse(pred$Thr > threshold_b, 'Thr', 'nonThr'))
+summary(label_final_b)
+ConfusionMatrix(model_15_b$final$y,label_final_b)
+
+###Compare with Lucie's threshold
+label_final_Bland <- as.factor(ifelse(pred$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_final_Bland)
+
+###To predict status of DD species
+pred_DD_b <- predict(model_15_b, newdata = nonassessedspecies, type="prob")
+label_DD_b <- as.factor(ifelse(pred_DD_b$Thr > threshold_b, 'Thr', 'nonThr'))
+summary(label_DD_b)
+
+###Compare with Lucie's threshold
+label_DD_Bland <- as.factor(ifelse(pred_DD$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_DD_Bland )
+
+####Variable importance
+varImp <- varImp(model_15_b, scale = FALSE)
+varImp
+plot(varImp, top=20)
+
+
+#################################################################################################
+####Alternative approach - turn taxonomic variables into dummy variables too
+#################################################################################################
+
+#Open data
+here()
+#setwd("insertpath") # insert correct path name
+BM<-read.csv(here("Bland_data.csv")) # insert correct path name
+# check dataset
+dim(BM) 
+names(BM)
+summary(BM)
+typeof(BM)
+str(BM)
+
+###Centering and scaling numeric variables################
+###Centre and scale variables
+trainassessed_preprocess <- preProcess(BM[,-1], method = c("center", "scale"))
+trainassessed_preprocess
+trainassessed_preprocess$method ##check which variables have been transformed, ignored etc.
+
+###As the function preprocess doesn't actually preprocess the data, we need to do this
+trainTransformed <- predict(trainassessed_preprocess, BM)
+head(trainTransformed)
+#preProcValues 
+#BM_new2_Transformed <- predict(preProcValues, BM_new2)
+#testTransformed <- predict(preProcValues, test)
+
+#dim(BM_new2_Transformed)
+#names(BM_new2_Transformed)
+#summary(BM_new2_Transformed)
+#typeof(BM_new2_Transformed)
+#str(BM_new2_Transformed)
+
+
+###Create dataframe with different types of variables
+#BM_other <- trainTransformed[,c("ID", "Binomial", "Order", "Family", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+#BM_cat <- trainTransformed[,c("ID", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
+#BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+
+#BM_other <- trainTransformed[,c("ID", "Binomial", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+#BM_cat <- trainTransformed[,c("ID", "Order", "Family", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
+#BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+
+
+###If we want to impute missing data without turning the taxonomic variables into dummy variables
+BM_other <- trainTransformed[,c("ID", "Binomial")]
+BM_cat <- trainTransformed[,c("ID", "Order", "Family", "Genus","RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
+BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+
+###Categorical variables transformed to orthogonal dummy variables##############
+###Create the dummy variables
+dummies <- dummyVars(" ~ .", data = BM_cat, fullRank=T)
+head(dummies)
+BM_cat_new <- data.frame(predict(dummies, newdata = BM_cat))
+summary(BM_cat_new)
+dim(BM_cat_new)
+
+###Remove highly correlated variables####################
+###Create a correlation matrix
+descrCor <-cor(BM_numeric[,-1], y = NULL, use = "complete.obs",
+               method = c("pearson", "kendall", "spearman"))
+#descrCor <-  cor(BM_numeric[,-1])
+summary(descrCor[upper.tri(descrCor)])
+
+###Visualise correlation
+corrplot(descrCor)
+
+###Detect highly correlated variables and exclude them (but there are none)
+highlyCorDescr <- findCorrelation(descrCor, cutoff = .9)
+highlyCorDescr ###as this is zero there is no need to delete any of the columns
+#filteredDescr <- BM_numeric[,-highlyCorDescr]
+#descrCor2 <- cor(filteredDescr)
+#summary(descrCor2[upper.tri(descrCor2)])
+
+
+####Impute missing values
+###https://stats.stackexchange.com/questions/226803/what-is-the-proper-way-to-use-rfimpute-imputation-by-random-forest-in-r
+#I tried BM_new2_imp <- missForest(BM_new2)
+###Error in randomForest.default(x = obsX, y = obsY, ntree = ntree, mtry = mtry,  : 
+#Can not handle categorical predictors with more than 53 categories.
+#it's Genus that has more than 53 categories
+#sapply(BM_new2[,sapply(BM_new2, is.factor)], nlevels)
+
+###impute missing values
+BM_cat_new_imp <- missForest(BM_cat_new, verbose = TRUE)
+#warning: In randomForest.default(x = obsX, y = obsY, ntree = ntree,  ... :
+#The response has five or fewer unique values.  Are you sure you want to do regression?
+summary(BM_cat_new_imp$ximp)
+dim(BM_cat_new_imp$ximp)
+
+BM_numeric_new_imp <- missForest(BM_numeric, verbose = TRUE)
+#warning: In randomForest.default(x = obsX, y = obsY, ntree = ntree,  ... :
+#The response has five or fewer unique values.  Are you sure you want to do regression?
+summary(BM_numeric_new_imp$ximp)
+dim(BM_numeric_new_imp$ximp)
+
+
+####Merge dataframes with variables of different categories back together
+BM_new <- merge(BM_other,BM_cat_new_imp$ximp, by = "ID")
+###Look at the data
+dim(BM_new) # check dataset
+names(BM_new)
+summary(BM_new)
+typeof(BM_new)
+str(BM_new)
+
+BM_final <- merge(BM_new,BM_numeric_new_imp$ximp, by = "ID")
+
+###Look at the data
+dim(BM_final) # check dataset
+names(BM_final)
+summary(BM_final)
+typeof(BM_final)
+str(BM_final)
+
+###Removed variables with near-zero variance##############
+#By default, caret uses freqCut = 19 and uniqueCut = 10, which is fairly conservative
+#o be a little more aggressive, when calling nearZeroVar(), recommended values would be: freqCut = 2 and uniqueCut = 20
+#From http://rstudio-pubs-static.s3.amazonaws.com/251240_12a8ecea8e144fada41120ddcf52b116.html
+###Bland and Bohm used frequency ratio.999 and unique valuepercentage<0.0001) 
+#nearZeroVar(BM_new, freqCut = 999/1, uniqueCut = 0.01, saveMetrics = TRUE) # returns a vector of integers corresponding to the column position of the problematic predictors
+nzv <- nearZeroVar(BM_final, freqCut = 999/1, uniqueCut = 0.01, saveMetrics = FALSE)
+nzv ####again, this is zero so no need to delete anything
+###look at the variables
+#nzv[nzv$nzv,][1:10,] 
+#check <- BM_new[, nzv]
+#head(check)
+###exclude them from dataset
+#BM_new2 <- BM_new[, -nzv] ####not necessary at the moment as no variables are being excluded
+BM_new2 <- BM_final ###this is neeeded only if we don't delete any variables
+dim(BM_new2)
+names(BM_new2)
+summary(BM_new2)
+typeof(BM_new2)
+str(BM_new2)
+
+
+
+
+
+###Partition the dataset
+# Separate assessed species
+assessed<- data.frame(subset(BM_new2, RedList.DD!=1))
+assessed <- assessed[complete.cases(assessed), ] ###could run just to test that nothing gets excluded if data have been imputed
+#row.names(assessed)<- assessed$Binomial
+
+assessed$binary<-"nonThr"
+assessed$binary[assessed$RedList.VU == 1]="Thr"
+assessed$binary[assessed$RedList.EN == 1]="Thr"
+assessed$binary[assessed$RedList.CR == 1]="Thr"
+dim(assessed)
+head(assessed)
+
+#assessed<- subset(assessed, select= -c(Binomial,RedList, binary, Genus))
+
+# Setting nonassessed species aside
+nonassessedspecies<- data.frame(subset (BM_new2, RedList.DD==1))
+nonassessedspecies <- nonassessedspecies[complete.cases(nonassessedspecies), ]
+nonassessedspecies$binary<-NA
+head(nonassessedspecies)
+dim(nonassessedspecies)
+
+#row.names(nonassessedspecies)<- nonassessedspecies$Binomial
+#nonassessedspecies<- subset(nonassessedspecies,select= -c(Binomial,RedList, Genus))
+
+###Create a smaller sample for testing in case it's useful
+assessed_small <- sample_n(assessed, 200)
+summary(assessed_small)
+
+#######################################################################################
+#############Run the model#############################################
+#######################################################################################
+
+###Exclude variables that are not used as predictors (binomial and threat status)
+assessed_c <- subset(assessed, select = -c(ID,Binomial,RedList.DD, RedList.EN, RedList.LC,RedList.NT,RedList.VU))
+
+
+###Set model parameters
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary)
+
+# run a random forest model
+start_time <- Sys.time()
+    model_15_c <- train(binary ~ ., 
+                      data = assessed_c, 
+                      method = "rf",
+                      tuneLength=15, ####see https://rpubs.com/phamdinhkhanh/389752
+                      ntree= 500,
+                      trControl = model_control, 
+                      metric="ROC")
+    end_time <- Sys.time()
+    end_time - start_time
+
+####Print 
+print(model_15_c)
+plot(model_15_c)
+print(model_15_c$finalModel) ####this gives the confusion matrix but doesn't calculate the accuracy 
+summary(model_15_c$finalModel)
+model_15$finalModel$confusion
+model_15$finalModel$ntree
+model_15$finalModel$mtry
+
+
+###Using evalm
+###as per https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
+## run MLeval
+res_c <- evalm(model_15_c)
+## get ROC
+res_c$roc
+## get calibration curve
+res_c$cc
+## get precision recall gain curve
+res_c$prg
+
+
+###Plot tree
+source ("tree_func.R")
+tree_num <- which(model_15_c$finalModel$forest$ndbigtree == max(model_15_c$finalModel$forest$ndbigtree))
+tree_func(final_model = model_15_c$finalModel, tree_num)
+
+#Warning messages:
+#  1: Duplicated aesthetics after name standardisation: na.rm 
+#2: Duplicated aesthetics after name standardisation: na.rm 
+#3: Duplicated aesthetics after name standardisation: na.rm 
+#4: Removed 98 rows containing missing values (geom_text_repel). 
+#5: Removed 98 rows containing missing values (geom_label). 
+#6: Removed 97 rows containing missing values (geom_label_repel). 
+
+
+#####ROC curve for final average value
+for_lift <- data.frame(binary = model_15_c$pred$obs, rf = model_15_c$pred$Thr)
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
+
+# Plot ROC ----------------------------------------------------------------
+ggplot(lift_obj$data) +
+  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
+  scale_color_discrete(guide = guide_legend(title = "method"))#
+
+#Get a ROC curve for each fold#############################################
+for_lift <- data.frame(binary = model_15_c$pred$obs, rf = model_15_c$pred$Thr, resample = model_15_c$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
+
+# Plot ROC
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))
+
+
+###Overlap
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))+
+  geom_line(data = lift_obj$data, aes(1 - Sp, Sn, color = liftModelVar), lwd=1, colour="black")
+
+###Calculate accuracy within individual samples
+ddply(model_15_c$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+
+###Youden index
+#thresholder - This function uses the resampling results from a train object to generate performance statistics
+#over a set of probability thresholds for two-class problems.
+resample_stats_c <- thresholder(model_15_c,
+                                threshold = seq(.1, 1, by = 0.0005),
+                                final = TRUE,
+                                statistics = "J")
+ggplot(resample_stats_c, aes(x = prob_threshold, y = J)) +
+  geom_point()
+
+###Extract optimal probability threshold (that maximises Youden)
+threshold_c <- resample_stats_c[which.max(resample_stats_c$J),]
+threshold_c <- threshold_c$prob_threshold
+threshold_c
+
+####To finish
+####Recalculate class (Thr/Non threatened) based on new threshold (0.86)
+#pred_52 <- subset(model_15$pred, mtry==52)
+#label <- ifelse(pred_52$Thr > threshold, 'Thr', 'nonThr')
+#summary(label)
+#levels(label)
+#count(label == "Thr")
+#count(label == "nonThr")
+
+####To recalculate class (Thr/Non threatened) based on new threshold (0.86) using the final model
+pred <- predict(model_15_c, newdata = assessed, type="prob")
+label_final_c <- as.factor(ifelse(pred$Thr > threshold_c, 'Thr', 'nonThr'))
+summary(label_final_c)
+ConfusionMatrix(model_15_c$final$y,label_final_c)
+
+###Compare with Lucie's threshold
+label_final_Bland <- as.factor(ifelse(pred$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_final_Bland)
+ConfusionMatrix(model_15_c$final$y,label_final_Bland)
+
+###To predict status of DD species
+pred_DD_c <- predict(model_15_c, newdata = nonassessedspecies, type="prob")
+label_DD_c <- as.factor(ifelse(pred_DD_c$Thr > threshold_c, 'Thr', 'nonThr'))
+summary(label_DD_c)
+
+###Compare with Lucie's threshold
+label_DD_Bland <- as.factor(ifelse(pred_DD$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_DD_Bland )
+
+####Variable importance
+varImp <- varImp(model_15_c, scale = FALSE)
+varImp
+plot(varImp, top=20)
+
+
+
+
+##################################################################################################
+###Repeat excluding Genus#########################################################################
+##################################################################################################
+###Exclude variables that are not used as predictors (binomial and threat status)
+assessed_d <- assessed[-c(1,2,47:580)]
+
+###Set model parameters
+model_control <- trainControl(## 10-fold CV
+  method = "cv",
+  number = 10,
+  savePredictions = TRUE, 
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary)
+
+# run a random forest model
+  start_time <- Sys.time()
+  model_15_d <- train(binary ~ ., 
+                      data = assessed_d, 
+                      method = "rf",
+                      tuneLength=15, ####see https://rpubs.com/phamdinhkhanh/389752
+                      ntree= 500,
+                      trControl = model_control, 
+                      metric="ROC")
+  end_time <- Sys.time()
+  end_time - start_time
+
+####Print 
+print(model_15_d)
+plot(model_15_d)
+print(model_15_d$finalModel) ####this gives the confusion matrix but doesn't calculate the accuracy 
+summary(model_15_d$finalModel)
+model_15_d$finalModel$confusion
+model_15_d$finalModel$ntree
+model_15_d$finalModel$mtry
+
+
+###Using evalm
+###as per https://stackoverflow.com/questions/31138751/roc-curve-from-training-data-in-caret
+## run MLeval
+res_d <- evalm(model_15_d)
+## get ROC
+res_c$roc
+## get calibration curve
+res_c$cc
+## get precision recall gain curve
+res_c$prg
+
+
+###Plot tree
+source ("tree_func.R")
+tree_num <- which(model_15_d$finalModel$forest$ndbigtree == max(model_15_d$finalModel$forest$ndbigtree))
+tree_func(final_model = model_15_d$finalModel, tree_num)
+
+#Warning messages:
+#  1: Duplicated aesthetics after name standardisation: na.rm 
+#2: Duplicated aesthetics after name standardisation: na.rm 
+#3: Duplicated aesthetics after name standardisation: na.rm 
+#4: Removed 98 rows containing missing values (geom_text_repel). 
+#5: Removed 98 rows containing missing values (geom_label). 
+#6: Removed 97 rows containing missing values (geom_label_repel). 
+
+
+#####ROC curve for final average value
+for_lift <- data.frame(binary = model_15_d$pred$obs, rf = model_15_d$pred$Thr)
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")   ###to check
+
+# Plot ROC ----------------------------------------------------------------
+ggplot(lift_obj$data) +
+  geom_line(aes(1 - Sp, Sn, color = liftModelVar)) +
+  scale_color_discrete(guide = guide_legend(title = "method"))#
+
+#Get a ROC curve for each fold#############################################
+for_lift <- data.frame(binary = model_15_d$pred$obs, rf = model_15_d$pred$Thr, resample = model_15_d$pred$Resample)
+lift_df <-  data.frame()
+for (fold in unique(for_lift$resample)) {
+  fold_df <- dplyr::filter(for_lift, resample == fold)
+  lift_obj_data <- lift(binary ~ rf, data = fold_df, class = "Thr")$data
+  lift_obj_data$fold = fold
+  lift_df = rbind(lift_df, lift_obj_data)
+}
+
+lift_obj <- lift(binary ~ rf, data = for_lift, class = "Thr")
+
+# Plot ROC
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))
+
+
+###Overlap
+ggplot(lift_df) +
+  geom_line(aes(1 - Sp, Sn, color = fold)) +
+  scale_color_discrete(guide = guide_legend(title = "Fold"))+
+  geom_line(data = lift_obj$data, aes(1 - Sp, Sn, color = liftModelVar), lwd=1, colour="black")
+
+###Calculate accuracy within individual samples
+ddply(model_15_d$pred, "Resample", summarise,
+      accuracy = Accuracy(pred, obs))
+
+###Youden index
+#thresholder - This function uses the resampling results from a train object to generate performance statistics
+#over a set of probability thresholds for two-class problems.
+resample_stats_d <- thresholder(model_15_d,
+                                threshold = seq(.1, 1, by = 0.0005),
+                                final = TRUE,
+                                statistics = "J")
+ggplot(resample_stats_d, aes(x = prob_threshold, y = J)) +
+  geom_point()
+
+###Extract optimal probability threshold (that maximises Youden)
+threshold_d <- resample_stats_d[which.max(resample_stats_d$J),]
+threshold_d <- threshold_d$prob_threshold
+threshold_d
+
+####To finish
+####Recalculate class (Thr/Non threatened) based on new threshold (0.86)
+#pred_52 <- subset(model_15$pred, mtry==52)
+#label <- ifelse(pred_52$Thr > threshold, 'Thr', 'nonThr')
+#summary(label)
+#levels(label)
+#count(label == "Thr")
+#count(label == "nonThr")
+
+####To recalculate class (Thr/Non threatened) based on new threshold (0.86) using the final model
+pred <- predict(model_15_d, newdata = assessed, type="prob")
+label_final_d <- as.factor(ifelse(pred$Thr > threshold_d, 'Thr', 'nonThr'))
+summary(label_final_d)
+ConfusionMatrix(model_15_d$final$y,label_final_d)
+
+###Compare with Lucie's threshold
+label_final_Bland <- as.factor(ifelse(pred$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_final_Bland)
+
+###To predict status of DD species
+pred_DD_d <- predict(model_15_d, newdata = nonassessedspecies, type="prob")
+label_DD_d <- as.factor(ifelse(pred_DD_d$Thr > threshold_d, 'Thr', 'nonThr'))
+summary(label_DD_d)
+
+###Compare with Lucie's threshold
+label_DD_Bland <- as.factor(ifelse(pred_DD$Thr > 0.6, 'Thr', 'nonThr'))
+summary(label_DD_Bland )
+
+####Variable importance
+varImp <- varImp(model_15_d, scale = FALSE)
+varImp
+plot(varImp, top=20)
+
+
+
+
+
+
+
+
+
+
 
 ###to check 
 ##################################################
