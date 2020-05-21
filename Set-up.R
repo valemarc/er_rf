@@ -36,7 +36,7 @@ install.packages("MLmetrics")
 install.packages("ggraph")
 install.packages("igraph")
 install.packages("missForest")
-
+install.packages("skimr")
 
 #Open libraries
 library(caret)
@@ -68,3 +68,5 @@ library(MLmetrics)
 library(ggraph)
 library(igraph)
 library(missForest)
+library(ggplot2)
+library(skimr)

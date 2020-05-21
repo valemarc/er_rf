@@ -40,7 +40,7 @@ head(trainTransformed)
 
 #BM_other <- trainTransformed[,c("ID", "Binomial", "Genus", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
 #BM_cat <- trainTransformed[,c("ID", "Order", "Family", "RedList","ReproductiveMode", "TrophicGroup", "HabitatMode", "Continent")]
-#BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsIUCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
+#BM_numeric <- trainTransformed[,c("ID", "BodySize", "HabitatsI UCN", "EOO", "Latitude", "ElevMin", "Prec", "PrecSeas", "Temp", "TempSeas", "HPD", "HPDMin", "HumanFootprint", "Accessibility", "Afrotropical", "Australasia", "Indo_malayan", "Nearctic", "Neotropical", "Oceania", "Palearctic")]
 
 
 ###If we want to impute missing data without turning the taxonomic variables into dummy variables
@@ -328,7 +328,10 @@ varImp <- varImp(model_15, scale = FALSE)
 varImp
 plot(varImp, top=20)
 
-
+  ggplot(pred_DD, aes(x=Thr)) +
+    geom_histogram(bins=100) +
+    geom_vline(xintercept=threshold, linetype="dotted", color="red")+
+    geom_vline(xintercept=0.5, linetype="dotted", color="blue")
 
 
 ################################################################################################
